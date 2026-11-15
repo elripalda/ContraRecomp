@@ -45,6 +45,10 @@ The first time, the game asks for your ROM and checks it. No building needed.
 
 ## Recommended settings
 
+**High-refresh monitor? Set Pictures per second to 240 (or 180) and turn VSync Off**
+(with FreeSync/G-Sync). VSync starts On, which suits 60 Hz monitors but makes the
+extra pictures stutter.
+
 The game starts with these already on, except two you set yourself:
 **Pictures per second** starts at 60, because only high-refresh monitors
 benefit from more, and the game opens in a window (press **F11** for

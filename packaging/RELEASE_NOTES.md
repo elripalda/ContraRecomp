@@ -22,6 +22,11 @@ If the AppImage won't start on an older distribution, install FUSE 2
 (`sudo apt install libfuse2` on Ubuntu/Debian), or run it with
 `--appimage-extract-and-run`.
 
+### High-refresh monitors (120 Hz and up)
+In the menu (Escape): **Smooth motion -> Pictures per second: 240** (or 180), and
+**Graphics -> VSync: Off** if your monitor has FreeSync or G-Sync (VSync On makes
+the extra pictures stutter). On a 60 Hz monitor, keep 60 and VSync On.
+
 ### Controls
 Escape (or the right shoulder button) opens the menu. F11 fullscreen,
 F7 save states, F8 rewind, Tab fast forward. Two players: two controllers.
