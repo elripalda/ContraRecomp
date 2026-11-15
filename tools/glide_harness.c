@@ -42,7 +42,7 @@ int main(int argc,char**argv){
     long sf=-1; int x=0,y=0;
     while(sf<f && fgets(ls,sizeof ls,fs)){ if(ls[0]=='#')continue; char b[64]; if(sscanf(ls,"%ld %*d %*d %*d %63s",&sf,b)==2){ if(sscanf(b,"%*d:%d,%d",&x,&y)!=2){x=0;y=0;} } }
     H_x=x;H_y=y;
-    bands_frame(); glide_frame(s_nband>0, s_cam_dx);
+    bands_frame(); glide_frame(s_nband>0, s_cam_dx, s_cam_dy);
     printf("F %ld cam %d",f,s_cam_dx);
     for(int i=0;i<s_nshot;i++) printf(" S%d,%d,%02x,%x,%.2f",s_shot[i].x,s_shot[i].y,s_shot[i].tile,s_shot[i].attr&3,motion_speed(&s_shot[i].m));
     for(int sl=0;sl<64;sl++){const uint8_t*o=H_oam+sl*4; if(o[0]<0xEF&&(o[1]==0x0e||o[1]==0x10)) printf(" O%d,%d,%02x,%x,%d,%.2f",o[3],o[0],o[1],o[2]&3,s_gl_ok[sl],s_gm[sl].valid?motion_speed(&s_gm[sl]):99);}

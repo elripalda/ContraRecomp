@@ -112,3 +112,19 @@ Checked on the whole recorded game (tools/glide_harness.c): 92% of the shots' mi
 frames filled; of the filled-in shots 93% are exactly where the game puts the shot next
 frame, 1% off by > 2 px, 6% were gone next frame (hit something / left the screen: drawn
 1/60 s longer). Only player shots are affected (enemy bullets don't blink).
+
+Legs (2026-11-15, a7184da): majority rule in character glide (matched pieces must be more
+than half the character). Bill's legs keep tile $42 while shifting 6 px back under him at a
+pose change: that one piece moved the whole of Bill 5 px back, a lurch every running cycle.
+Over the whole recorded game: sudden jumps on Bill 2,177 -> 593 (the rest: somersaults,
+base stages); 96.2% of sprites still glide (96.4% before).
+
+Waterfall (2026-11-15): vertical eased camera. Each band has a Y motion like X (scroll Y of
+its top line, steps across 240, > 8 px = jump); background rows are drawn up to 8 px
+behind (under the crop, kept inside the band); characters match and glide in world Y
+(screen Y + the camera's step); sprites and steady shots follow the camera's Y offset.
+Offline on the recorded climb (pieces 61-69, tools/glide_harness.c):
+  scenery speed changes between pictures: median 2 px / max 4 (stepping at 60 Hz) ->
+  median 0 / 99% 0.27 px; sudden changes > 1 px 1,226 -> 2 (both a piece's first frame).
+  Player world-Y sudden changes 2,536 -> 1,712 (the rest: somersault shapes).
+  Horizontal stages: output identical to before (pieces 32, 105, 140, 200).

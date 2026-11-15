@@ -117,3 +117,11 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     env CYC_PACING_LOG=pacing-legs.log mangohud ./build-play/contrarecomp contra.nes
 #   If it's good, save it:
     git add -A; git commit -m "Contra: character glide trusts matched pieces only if they are most of the character (leg lurch)"
+
+# 17) Waterfall vertical smoothing: rebuild and play Stage 3 (240)
+#   (Tip: save a state at the start of the Waterfall in an F7 slot for re-tests)
+    cd ~/Projects/ContraRecomp
+    cmake --build build-play --parallel
+    env CYC_PACING_LOG=pacing-waterfall.log mangohud ./build-play/contrarecomp contra.nes
+#   If it's good, save it:
+    git add -A; git commit -m "Contra: vertical eased camera and world-Y glide (Waterfall)"

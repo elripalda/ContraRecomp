@@ -33,7 +33,7 @@
  *                 matched pieces agree on one movement. Unsure ones stay
  *                 where the game put them on screen. 0: every sprite stays
  *                 where the game put it on screen.
- *                 Vertical scrolling is not glided yet.
+ *                 Vertical scrolling glides the same way (Waterfall).
  *                 [Game] SteadyShots (default 1): Contra draws every
  *                 player shot only every other frame; a small sprite seen
  *                 blinking that way is drawn in the frames it is missing,
@@ -276,7 +276,7 @@ enum { MAX_PF_BANDS = 8, SMOOTH_MAX_STEP = 8, GL_REACH = 10, GL_AGREE = 70, SPLI
  * (0,4,0,4... below the HUD). A step that undoes the previous one (2-8 px)
  * starts a shake; while the band only flips between its steady X (sx) and
  * the shaken one, sx stays. ScreenShake 0 draws the band at sx. */
-typedef struct { int start, x; bool on; int sx, other, lastd, quiet; bool shaking; } Band;
+typedef struct { int start, x; bool on; int sx, other, lastd, quiet; bool shaking; int y; } Band;
 static Band   s_band[MAX_PF_BANDS], s_band_prev[MAX_PF_BANDS];
 static int    s_nband, s_nband_prev;           /* 0: nothing to glide (cinema, or the first frame) */
 static int    s_band_dx[MAX_PF_BANDS];
@@ -291,6 +291,12 @@ static int    s_band_dx[MAX_PF_BANDS];
 enum { EASE_N = 4 };
 typedef struct { double x, d0, v; double hist[EASE_N]; bool valid; } BandMotion;
 static BandMotion s_bm[MAX_PF_BANDS], s_bm_prev[MAX_PF_BANDS];
+/* Up and down, the same way (Contra's Waterfall: the camera climbs after
+ * the player with the game's own slowing steps 3,3,2,2,2,1,1,0,1,0 px and
+ * wraps at 240; drawn as is, the scenery moved at 60 Hz while everything
+ * else glided). + = the camera moved down (the picture moves up). */
+static BandMotion s_bmy[MAX_PF_BANDS], s_bmy_prev[MAX_PF_BANDS];
+static int        s_band_dy[MAX_PF_BANDS];
 static const double EASE_GAIN = 0.15;
 
 static void ease_band(BandMotion *m, double d, bool jump)
@@ -329,6 +335,15 @@ static double band_offset(int b, double phase)
     double off = m->x - (m->d0 + m->v * phase);
     return off > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : off < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : off;
 }
+/* The same up/down (+ = drawn further down). */
+static double band_offset_y(int b, double phase)
+{
+    if (b < 0) return 0;
+    const BandMotion *m = &s_bmy[b];
+    if (!m->valid) return 0;
+    double off = m->x - (m->d0 + m->v * phase);
+    return off > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : off < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : off;
+}
 static int s_cam_band = -1;
 static int step_x(int d);
 /* ScreenShake 0: how far band b is shaken off its steady position. */
@@ -344,6 +359,7 @@ static bool shake_active(void)
 }
 static int8_t s_line_band[NES_H];               /* band of each line, -1 none */
 static int    s_cam_dx;                         /* the playfield's (largest band's) step */
+static int    s_cam_dy;                         /* the same, up/down */
 static double s_phase;                          /* how far into the frame this picture is, 0-1 */
 
 static int wrap_step(int d, int span) { d %= span; if (d < 0) d += span; return d >= span / 2 ? d - span : d; }
@@ -394,6 +410,9 @@ static void bands_frame(void)
     memcpy(s_band_prev, s_band, sizeof(s_band));
     memcpy(s_bm_prev, s_bm, sizeof(s_bm));
     memset(s_bm, 0, sizeof(s_bm));
+    memcpy(s_bmy_prev, s_bmy, sizeof(s_bmy));
+    memset(s_bmy, 0, sizeof(s_bmy));
+    s_cam_dy = 0;
     s_cam_band = -1;
     s_nband_prev = s_nband;
     s_nband = 0;
@@ -422,8 +441,10 @@ static void bands_frame(void)
         int y0 = starts[b], y1 = b + 1 < n ? starts[b + 1] : NES_H;
         bool on = cyc_render_line_mask(y0) & 0x08;
         int x = on ? cyc_render_line_scroll_x(y0) : 0;
-        s_band[b] = (Band){ y0, x, on, s_line_sx[y0], 0, 0, 0, s_line_entering[y0] };
+        int yv = on ? cyc_render_line_scroll_y(y0) : 0;
+        s_band[b] = (Band){ y0, x, on, s_line_sx[y0], 0, 0, 0, s_line_entering[y0], yv };
         s_band_dx[b] = 0;
+        s_band_dy[b] = 0;
         for (int j = 0; j < s_nband_prev && on; ++j)
             if (s_band_prev[j].on && s_band_prev[j].start == y0) {
                 /* the smoothing follows the steady position; sprites do not shake */
@@ -432,12 +453,18 @@ static void bands_frame(void)
                 s_band_dx[b] = jump ? 0 : d;
                 s_bm[b] = s_bm_prev[j];
                 ease_band(&s_bm[b], s_band_dx[b], jump);
+                /* up/down: the band's top line's scroll Y, across 240 */
+                int dyv = wrap_step(yv - s_band_prev[j].y, 240);
+                bool jumpy = jump || abs(dyv) > SMOOTH_MAX_STEP;
+                s_band_dy[b] = jumpy ? 0 : dyv;
+                s_bmy[b] = s_bmy_prev[j];
+                ease_band(&s_bmy[b], s_band_dy[b], jumpy);
             }
         for (int y = y0; y < y1; ++y) s_line_band[y] = (int8_t)b;
         if (on && y1 - y0 > most) { most = y1 - y0; biggest = b; }
     }
     s_nband = n;
-    if (biggest >= 0) s_cam_dx = s_band_dx[biggest];
+    if (biggest >= 0) { s_cam_dx = s_band_dx[biggest]; s_cam_dy = s_band_dy[biggest]; }
     s_cam_band = biggest;
 }
 
@@ -493,7 +520,7 @@ static double motion_speed(const BandMotion *m)
 
 /* Blades of Steel's player glide, matched in world coordinates (screen
  * position plus the playfield's step). */
-static void glide_frame(bool on, int dx)
+static void glide_frame(bool on, int dx, int dy)
 {
     const uint8_t *oam = cyc_render_oam();
     memset(s_gdx, 0, sizeof(s_gdx));
@@ -519,7 +546,7 @@ static void glide_frame(bool on, int dx)
             for (int j = 0; j < s_gl_prev_n; ++j) {
                 const GlSprite *p = &s_gl_prev[j];
                 if (p->tile != o[1] || ((p->attr ^ o[2]) & 0xC3)) continue;   /* same tile, flips, palette */
-                int ex = o[3] - p->x + dx, ey = o[0] - p->y;
+                int ex = o[3] - p->x + dx, ey = o[0] - p->y + dy;   /* in the world */
                 if (abs(ex) > GL_REACH || abs(ey) > GL_REACH) continue;
                 int d = abs(ex) + abs(ey) + p->age * 4;      /* prefer last frame's over a ghost */
                 if (d < bd) {
@@ -601,7 +628,7 @@ static void glide_frame(bool on, int dx)
                     for (int j = 0; j < s_gl_prev_n; ++j) {
                         const GlSprite *pv = &s_gl_prev[j];
                         if ((pv->attr ^ o[2]) & 3) continue;          /* same palette: not a neighbour's piece */
-                        int ex = o[3] - pv->x + dx, ey = o[0] - pv->y;
+                        int ex = o[3] - pv->x + dx, ey = o[0] - pv->y + dy;
                         if (abs(ex) > GL_REACH || abs(ey) > GL_REACH) continue;
                         int d = abs(ex) + abs(ey) + pv->age * 4;
                         if (d < bd) { bd = d; bj = j; }
@@ -648,7 +675,7 @@ static void glide_frame(bool on, int dx)
         GlSprite g = *p;
         g.age++;
         g.x += (int)lround(motion_speed(&s_gl_prev_m[j])) - dx;   /* where it would be on screen now */
-        g.y += s_gl_prev_my[j].valid ? (int)lround(motion_speed(&s_gl_prev_my[j])) : 0;
+        g.y += (s_gl_prev_my[j].valid ? (int)lround(motion_speed(&s_gl_prev_my[j])) : 0) - dy;
         nm[n] = s_gl_prev_m[j];
         nm[n].d0 += nm[n].v;                                     /* its pictures went on gliding */
         nm[n].x += motion_speed(&nm[n]);
@@ -677,6 +704,8 @@ static void smooth_reset(void)
     s_cam_band = -1;
     s_gl_prev_n = 0;
     s_nshot = 0;
+    memset(s_bmy, 0, sizeof(s_bmy));
+    s_cam_dy = 0;
     memset(s_gl_prev_m, 0, sizeof(s_gl_prev_m));
     memset(s_gl_prev_my, 0, sizeof(s_gl_prev_my));
     s_cam_dx = 0;
@@ -711,18 +740,30 @@ static int floordiv(int a, int k) { return a >= 0 ? a / k : -((-a + k - 1) / k);
 static void draw_smooth(uint32_t *out, int ow, int oh, int k, Crop c)
 {
     double q = 1.0 - s_phase;
+    int prev_src = -1, prev_ko = 0;
     for (int y = 0; y < oh; ++y) {
         uint32_t *o = out + (size_t)y * (size_t)ow;
         uint8_t *bo = s_big_op + (size_t)y * (size_t)ow;
-        if (y % k) {                               /* the same native line as the row above */
+        int yo = c.top + y / k;                    /* the screen line this row is on */
+        int b = s_line_band[yo];
+        /* up/down: the row shows the band's line koy/k above it (trailing
+         * the camera, at most 8 px: under the edge crop), kept inside the band */
+        int koy = s_present_rate > 60 && b >= 0 ? (int)lround(band_offset_y(b, s_phase) * k) : 0;
+        int yn = floordiv(c.top * k + y - koy, k);
+        if (b >= 0) {
+            int y1 = b + 1 < s_nband ? s_band[b + 1].start : NES_H;
+            yn = clampi(yn, s_band[b].start, y1 - 1);
+        }
+        yn = clampi(yn, 0, NES_H - 1);
+        double off = (s_present_rate > 60 ? band_offset(b, s_phase) : 0) + shake_off(b);
+        int ko = (int)lround(off * k);
+        if (y && yn == prev_src && ko == prev_ko) {   /* the same as the row above */
             memcpy(o, o - ow, (size_t)ow * sizeof(*o));
             memcpy(bo, bo - ow, (size_t)ow);
             continue;
         }
-        int yn = c.top + y / k;
-        int b = s_line_band[yn];
-        double off = (s_present_rate > 60 ? band_offset(b, s_phase) : 0) + shake_off(b);
-        int ko = (int)lround(off * k);
+        prev_src = yn;
+        prev_ko = ko;
         const uint32_t *bg = s_bg + yn * NES_W;
         const uint8_t *op = s_bgop + yn * NES_W;
         int g = c.left * k - ko;
@@ -757,7 +798,7 @@ static void draw_smooth(uint32_t *out, int ow, int oh, int k, Crop c)
             const BandMotion *my = &s_gmy[slot];
             double owny = my->valid ? my->x - (my->d0 + my->v * s_phase) : s_gdy[slot] * q;
             owny = owny > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : owny < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : owny;
-            gy = -owny;
+            gy = band_offset_y(s_cam_band, s_phase) - owny;
         }
         int x0 = o[3] * k + (int)lround(gx * k) - c.left * k;
         int y0 = ytop * k + (int)lround(gy * k) - c.top * k;
@@ -800,10 +841,10 @@ static void draw_smooth(uint32_t *out, int ow, int oh, int k, Crop c)
         int rows = tall ? 16 : 8;
         double own = sh->m.x - (sh->m.d0 + sh->m.v * s_phase);
         own = own > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : own < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : own;
-        double gx = band_offset(s_cam_band, s_phase) - own, gy = 0;
+        double gx = band_offset(s_cam_band, s_phase) - own, gy = band_offset_y(s_cam_band, s_phase);
         if (sh->my.valid) {
             double owny = sh->my.x - (sh->my.d0 + sh->my.v * s_phase);
-            gy = -(owny > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : owny < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : owny);
+            gy -= owny > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : owny < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : owny;
         }
         int x0 = sh->x * k + (int)lround(gx * k) - c.left * k;
         int y0 = ytop * k + (int)lround(gy * k) - c.top * k;
@@ -1030,7 +1071,7 @@ static void frame_end(void *ctx)
     s_phase = 0;
     s_extras.present_rate = (unsigned)s_present_rate;
     bands_frame();
-    glide_frame(s_nband > 0, s_cam_dx);
+    glide_frame(s_nband > 0, s_cam_dx, s_cam_dy);
     static bool capture_on;
     if (!capture_on) {
         cyc_render_capture_background(true);   /* whole from the next frame */
