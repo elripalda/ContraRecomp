@@ -128,3 +128,16 @@ Offline on the recorded climb (pieces 61-69, tools/glide_harness.c):
   median 0 / 99% 0.27 px; sudden changes > 1 px 1,226 -> 2 (both a piece's first frame).
   Player world-Y sudden changes 2,536 -> 1,712 (the rest: somersault shapes).
   Horizontal stages: output identical to before (pieces 32, 105, 140, 200).
+
+Waterfall boss arms (2026-11-15): each arm = a chain of ring segments (tile $F8 palette 3,
+2 sprites per ring), touching, so one "character". Each segment wobbles back 1,1,1 px then
+on 3-4 px, out of step with the others: no shared motion fits, so the glide drew them as
+the game put them (snapping 3-4 px every frame at 240 = "blurry, hard to hit").
+Fix (chain rule): most pieces found but moving by slightly different amounts (spread
+<= 4 px) = a flexing chain: each found piece glides on its own motion. A bigger spread
+(Bill's 6 px leg shift) still follows by position.
+Offline (pieces 70-73): arm speed change between pictures p90 1.00 -> 0.05 px, p99 3.0 ->
+1.9 px; drawn at most ~4 px (p99) from the game's position. Whole game: Bill sudden
+jumps 601 -> 608, gliding 96.2% -> 96.1%, steady shots unchanged. Side effect, a fix:
+Snow Field pieces 125-132, falling objects in Bill's palette touching him used to drag
+Bill along (drawn sliding while standing); now he stays put.

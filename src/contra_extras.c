@@ -511,6 +511,23 @@ static bool touching(const uint8_t *a, const uint8_t *b, int h)
     return ((a[2] ^ b[2]) & 3) == 0 && abs((int)a[3] - (int)b[3]) <= 8 && abs((int)a[0] - (int)b[0]) <= h;
 }
 
+/* How far apart the found pieces' steps of character r are (the larger of
+ * the X and Y ranges, px). */
+enum { GL_CHAIN_SPREAD = 4 };
+static int gl_find(int *parent, int i);
+static int chain_spread(int *parent, int r, int nv, const bool *has, const int *mx, const int *my)
+{
+    int x0 = 1 << 20, x1 = -(1 << 20), y0 = 1 << 20, y1 = -(1 << 20);
+    for (int i = 0; i < nv; ++i) {
+        if (gl_find(parent, i) != r || !has[i]) continue;
+        if (mx[i] < x0) x0 = mx[i];
+        if (mx[i] > x1) x1 = mx[i];
+        if (my[i] < y0) y0 = my[i];
+        if (my[i] > y1) y1 = my[i];
+    }
+    return x1 < x0 ? 0 : (x1 - x0 > y1 - y0 ? x1 - x0 : y1 - y0);
+}
+
 static double motion_speed(const BandMotion *m)
 {
     double a = 0;
@@ -613,6 +630,27 @@ static void glide_frame(bool on, int dx, int dy)
                 for (int i = 0; i < nv; ++i) if (gl_find(parent, i) == r && has[i]) used[from[i]] = true;
                 sx = mx[top];
                 sy = my[top];
+            } else if (m * 2 > pieces && chain_spread(parent, r, nv, has, mx, my) <= GL_CHAIN_SPREAD) {
+                /* Most pieces found, moving by slightly different amounts: a
+                 * flexing chain, not a pose change (Contra's Waterfall boss:
+                 * each arm segment wobbles back 1,1,1 then on 3-4 px, the
+                 * segments out of step; one shared motion fitted none of
+                 * them, so they were drawn as the game put them, snapping
+                 * every frame). Each found piece glides on its own motion. */
+                for (int i = 0; i < nv; ++i) {
+                    if (gl_find(parent, i) != r || !has[i]) continue;
+                    used[from[i]] = true;
+                    BandMotion pm = s_gl_prev_m[from[i]], pmy = s_gl_prev_my[from[i]];
+                    ease_band(&pm, mx[i], false);
+                    ease_band(&pmy, my[i], false);
+                    s_gdx[vis[i]] = (int8_t)mx[i];
+                    s_gdy[vis[i]] = (int8_t)my[i];
+                    s_gl_ok[vis[i]] = true;
+                    s_gm[vis[i]] = pm;
+                    s_gmy[vis[i]] = pmy;
+                    s_gliding += mx[i] != 0 || my[i] != 0;
+                }
+                continue;
             } else {
                 /* No agreement: the character changed its picture (a pose,
                  * the lanterns' flame, a spinning star). Follow it by
