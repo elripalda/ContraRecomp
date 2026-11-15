@@ -34,6 +34,10 @@
  *                 where the game put them on screen. 0: every sprite stays
  *                 where the game put it on screen.
  *                 Vertical scrolling is not glided yet.
+ *                 [Game] SteadyShots (default 1): Contra draws every
+ *                 player shot only every other frame; a small sprite seen
+ *                 blinking that way is drawn in the frames it is missing,
+ *                 at its last position plus its own motion (see SteadyShot).
  *                 [Game] EmuThread (default 1): with PresentRate above 60,
  *                 the next NES frame runs on a second core while the
  *                 in-between pictures are shown (the engine's
@@ -441,7 +445,12 @@ static void bands_frame(void)
  * their predicted position, so a blinking Ryu or a flickering star is found
  * again with its motion). */
 enum { GL_MAX = 128, GL_GHOST_FRAMES = 2 };
-typedef struct { int y, x; uint8_t tile, attr, age; } GlSprite;
+/* small: a particle (< GL_MIN_PIXELS pixels: a bullet, a spark).
+ * blinker: a small sprite that has been found again after a frame missing
+ * (Contra draws every player shot only every other frame: in the recorded
+ * Stage 1 the rifle bullet was in OAM on alternate frames 10,356 times and
+ * on two frames in a row never). */
+typedef struct { int y, x; uint8_t tile, attr, age, small, blinker; } GlSprite;
 static GlSprite s_gl_prev[GL_MAX];
 /* Each character's eased world motion (like the bands), across and up/down:
  * the soldiers walk in uneven 1,0,1,1,0 px steps, Ryu runs 1,2,1,2, falling
@@ -450,6 +459,16 @@ static GlSprite s_gl_prev[GL_MAX];
  * every piece of a character shares it. */
 static BandMotion s_gl_prev_m[GL_MAX], s_gl_prev_my[GL_MAX];   /* parallel to s_gl_prev */
 static BandMotion s_gm[64], s_gmy[64];                           /* per slot, this frame */
+/* Steady shots (SteadyShots, default 1): a blinker missing this frame is
+ * drawn where it would be (its last position plus its own motion), gliding
+ * like the others, instead of vanishing for 1/60 s. At 240 pictures a
+ * second the game's blink showed each shot for 4 pictures, hid it for 4 and
+ * brought it back 6 px further on: one shot seen as a smeared pair. */
+enum { SHOT_MAX = 32 };
+typedef struct { int y, x; uint8_t tile, attr; BandMotion m, my; } SteadyShot;
+static SteadyShot s_shot[SHOT_MAX];
+static int        s_nshot;
+static int  s_shots_saved = 1, s_shots = 1;
 static int      s_gl_prev_n, s_gliding;
 static int8_t   s_gdx[64], s_gdy[64];    /* per slot: its character's movement in the world this frame */
 static bool     s_gl_ok[64];
@@ -484,6 +503,9 @@ static void glide_frame(bool on, int dx)
     memset(s_gmy, 0, sizeof(s_gmy));
     s_gliding = 0;
     bool used[GL_MAX] = { false };
+    bool s_solid[64];                /* per visible sprite: not a particle */
+    int  s_from[64];                 /* per visible sprite: its match in s_gl_prev, or -1 */
+    for (int i = 0; i < 64; ++i) { s_solid[i] = true; s_from[i] = -1; }
     int vis[64], nv = 0;
     for (int slot = 0; slot < 64; ++slot) if (oam[slot * 4] < 0xEF) vis[nv++] = slot;
     if (on) {
@@ -500,7 +522,14 @@ static void glide_frame(bool on, int dx)
                 int ex = o[3] - p->x + dx, ey = o[0] - p->y;
                 if (abs(ex) > GL_REACH || abs(ey) > GL_REACH) continue;
                 int d = abs(ex) + abs(ey) + p->age * 4;      /* prefer last frame's over a ghost */
-                if (d < bd) { bd = d; mx[i] = ex; my[i] = ey; has[i] = true; from[i] = j; }
+                if (d < bd) {
+                    bd = d; has[i] = true; from[i] = j;
+                    /* a ghost with no motion yet stayed where it was seen:
+                     * the step is spread over the frames it was missing */
+                    int span = p->age && !s_gl_prev_m[j].valid ? p->age + 1 : 1;
+                    mx[i] = ex / span;
+                    my[i] = ey / span;
+                }
             }
         }
         int parent[64];
@@ -519,6 +548,8 @@ static void glide_frame(bool on, int dx)
                 for (unsigned bits = cyc_render_chr((uint16_t)(pat + (r & 7))) | cyc_render_chr((uint16_t)(pat + (r & 7) + 8)); bits; bits &= bits - 1) ++px;   /* portable popcount (MSVC) */
             }
             solid[i] = px >= GL_MIN_PIXELS;
+            s_solid[i] = solid[i];
+            s_from[i] = from[i];
         }
         for (int i = 0; i < nv; ++i) parent[i] = i;
         for (int i = 0; i < nv; ++i)
@@ -599,11 +630,14 @@ static void glide_frame(bool on, int dx)
         const uint8_t *o = oam + vis[i] * 4;
         nm[n] = s_gm[vis[i]];
         nmy[n] = s_gmy[vis[i]];
-        nxt[n++] = (GlSprite){ o[0], o[3], o[1], o[2], 0 };
+        uint8_t small = on && !s_solid[i], blink = 0;
+        if (on && small && s_from[i] >= 0)
+            blink = s_gl_prev[s_from[i]].age > 0 || s_gl_prev[s_from[i]].blinker;
+        nxt[n++] = (GlSprite){ o[0], o[3], o[1], o[2], 0, small, blink };
     }
     for (int j = 0; on && j < s_gl_prev_n && n < GL_MAX; ++j) {
         const GlSprite *p = &s_gl_prev[j];
-        if (used[j] || p->age >= GL_GHOST_FRAMES || !s_gl_prev_m[j].valid) continue;
+        if (used[j] || p->age >= GL_GHOST_FRAMES || (!s_gl_prev_m[j].valid && !p->small)) continue;
         GlSprite g = *p;
         g.age++;
         g.x += (int)lround(motion_speed(&s_gl_prev_m[j])) - dx;   /* where it would be on screen now */
@@ -615,6 +649,13 @@ static void glide_frame(bool on, int dx)
         if (nmy[n].valid) { nmy[n].d0 += nmy[n].v; nmy[n].x += motion_speed(&nmy[n]); }
         nxt[n++] = g;
     }
+    /* Steady shots: blinkers missing this frame (ghosts just made), with a
+     * motion, at most 8 px behind (the glide's limit) */
+    s_nshot = 0;
+    for (int k = nv; on && k < n && s_nshot < SHOT_MAX; ++k)
+        if (nxt[k].age == 1 && nxt[k].small && nxt[k].blinker && nm[k].valid &&
+            nxt[k].y < 0xEF && nxt[k].x > -8 && nxt[k].x < NES_W)
+            s_shot[s_nshot++] = (SteadyShot){ nxt[k].y, nxt[k].x, nxt[k].tile, nxt[k].attr, nm[k], nmy[k] };
     memcpy(s_gl_prev, nxt, sizeof(GlSprite) * (size_t)n);
     memcpy(s_gl_prev_m, nm, sizeof(BandMotion) * (size_t)n);
     memcpy(s_gl_prev_my, nmy, sizeof(BandMotion) * (size_t)n);
@@ -628,6 +669,7 @@ static void smooth_reset(void)
     memset(s_bm, 0, sizeof(s_bm));
     s_cam_band = -1;
     s_gl_prev_n = 0;
+    s_nshot = 0;
     memset(s_gl_prev_m, 0, sizeof(s_gl_prev_m));
     memset(s_gl_prev_my, 0, sizeof(s_gl_prev_my));
     s_cam_dx = 0;
@@ -711,6 +753,52 @@ static void draw_smooth(uint32_t *out, int ow, int oh, int k, Crop c)
             gy = -owny;
         }
         int x0 = o[3] * k + (int)lround(gx * k) - c.left * k;
+        int y0 = ytop * k + (int)lround(gy * k) - c.top * k;
+        unsigned attr = o[2];
+        for (int r = 0; r < rows; ++r) {
+            int row = (attr & 0x80) ? rows - 1 - r : r;
+            uint16_t pattern = sprite_pattern(o, tall, table, row);
+            uint8_t lo = s_snap_chr[(pattern + (row & 7)) & 0x1FFF];
+            uint8_t hi = s_snap_chr[(pattern + (row & 7) + 8) & 0x1FFF];
+            if (!(lo | hi)) continue;
+            for (int cc = 0; cc < 8; ++cc) {
+                int bit = (attr & 0x40) ? cc : 7 - cc;
+                int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                if (!v) continue;
+                uint32_t colour = s_snap_col[(attr & 3) * 4 + v];
+                for (int yy = y0 + r * k; yy < y0 + (r + 1) * k; ++yy) {
+                    if (yy < 0 || yy >= oh) continue;
+                    for (int xx = x0 + cc * k; xx < x0 + (cc + 1) * k; ++xx) {
+                        if (xx < 0 || xx >= ow) continue;
+                        size_t at = (size_t)yy * (size_t)ow + (size_t)xx;
+                        if (s_taken[at]) continue;
+                        s_taken[at] = 1;
+                        if ((attr & 0x20) && s_big_op[at]) continue;
+                        out[at] = colour;
+                    }
+                }
+            }
+        }
+    }
+    /* steady shots: behind every sprite of the frame (drawn last, s_taken) */
+    for (int i = 0; s_shots && s_glide && s_present_rate > 60 && i < s_nshot; ++i) {
+        const SteadyShot *sh = &s_shot[i];
+        uint8_t ob[4] = { (uint8_t)sh->y, sh->tile, sh->attr, 0 };
+        const uint8_t *o = ob;
+        int ytop = sh->y + 1;
+        int ln = clampi(ytop, 0, NES_H - 1);
+        if (!(s_snap_mask[ln] & 0x10)) continue;
+        bool tall = s_snap_tall[ln];
+        uint16_t table = s_snap_table[ln];
+        int rows = tall ? 16 : 8;
+        double own = sh->m.x - (sh->m.d0 + sh->m.v * s_phase);
+        own = own > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : own < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : own;
+        double gx = band_offset(s_cam_band, s_phase) - own, gy = 0;
+        if (sh->my.valid) {
+            double owny = sh->my.x - (sh->my.d0 + sh->my.v * s_phase);
+            gy = -(owny > SMOOTH_MAX_STEP ? SMOOTH_MAX_STEP : owny < -SMOOTH_MAX_STEP ? -SMOOTH_MAX_STEP : owny);
+        }
+        int x0 = sh->x * k + (int)lround(gx * k) - c.left * k;
         int y0 = ytop * k + (int)lround(gy * k) - c.top * k;
         unsigned attr = o[2];
         for (int r = 0; r < rows; ++r) {
@@ -888,6 +976,7 @@ static void load_setting(void *ctx, const char *key, const char *value)
     else if (!strcmp(key, "PresentScale"))   s_scale = s_scale_saved = clampi(v, 1, SCALE_MAX);
     else if (!strcmp(key, "PresentRate"))    s_present_rate = s_rate_saved = clampi(v, 0, 1000);
     else if (!strcmp(key, "CharGlide"))      s_glide = s_glide_saved = clampi(v, 0, 1);
+    else if (!strcmp(key, "SteadyShots"))    s_shots = s_shots_saved = clampi(v, 0, 1);
     else if (!strcmp(key, "EmuThread"))      s_thread = s_thread_saved = clampi(v, 0, 1);
     else if (!strcmp(key, "ScreenShake"))    s_shake = s_shake_saved = clampi(v, 0, 1);
     s_crop = s_crop_saved;
@@ -905,6 +994,7 @@ static void save_settings(void *ctx, FILE *f)
     fprintf(f, "PresentScale = %d\n", s_scale_saved);
     fprintf(f, "PresentRate = %d\n", s_rate_saved);
     fprintf(f, "CharGlide = %d\n", s_glide_saved);
+    fprintf(f, "SteadyShots = %d\n", s_shots_saved);
     fprintf(f, "EmuThread = %d\n", s_thread_saved);
     fprintf(f, "ScreenShake = %d\n", s_shake_saved);
 }
@@ -966,6 +1056,7 @@ static const CycHostOption s_options[] = {
     { "--screen-shake",    true, "0|1: hold the screen steady when the game shakes it / shake as the game" },
     { "--emu-thread",      true, "0|1: next frame on a second core during in-between pictures" },
     { "--char-glide",      true, "0|1: characters glide between frames (with --present-rate)" },
+    { "--steady-shots",    true, "0|1: shots the game blinks are drawn every frame (with --char-glide)" },
     { "--plain",           true, "0|1: 1 shows the engine's own picture (no crop, no redraw), for comparing" },
 };
 
@@ -992,6 +1083,7 @@ static bool option(void *ctx, const char *name, const char *value)
     if (!strcmp(name, "--screen-shake"))    return parse_int(value, 0, 1, &s_shake);
     if (!strcmp(name, "--emu-thread"))      return parse_int(value, 0, 1, &s_thread);
     if (!strcmp(name, "--char-glide"))      return parse_int(value, 0, 1, &s_glide);
+    if (!strcmp(name, "--steady-shots"))    return parse_int(value, 0, 1, &s_shots);
     if (!strcmp(name, "--plain"))           return parse_int(value, 0, 1, &s_plain);
     if (!strcmp(name, "--present-scale"))   return parse_int(value, 1, SCALE_MAX, &s_scale);
     FILE **fp = !strcmp(name, "--scroll-log") ? &s_scroll_log
@@ -1025,8 +1117,13 @@ static const RecompRuntimeUiItem s_menu[] = {
       "the characters glide a fraction of a pixel in each. 180 suits a 240 Hz FreeSync monitor.",
       RECOMP_RUNTIME_UI_CHOICE, 0, 3, 1, RATE_CHOICES, 4, RATE_VALUES },
     { "contra.glide", "Smooth motion", "Character glide",
-      "With 120/180/240 pictures per second, Ryu and the enemies glide between the game's positions "
+      "With 120/180/240 pictures per second, Bill, Lance and the enemies glide between the game's positions "
       "instead of hopping. Off: they stay where the game put them on screen.",
+      RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
+    { "contra.shots", "Smooth motion", "Steady shots",
+      "The game shows every shot only every other frame (a see-through blink on a CRT). On: a shot "
+      "missing for a frame is drawn where it would be, so it flies smoothly instead of looking doubled. "
+      "Needs Character glide.",
       RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
     { "contra.thread", "Smooth motion", "Second core",
       "Runs the next NES frame on a second CPU core while the in-between pictures are shown, so they "
@@ -1069,6 +1166,7 @@ static int menu_get(void *ctx, const RecompRuntimeUiItem *it, int *out)
         for (int i = 0; i < 4; ++i) if (RATE_VALUES[i] == s_present_rate) *out = RATE_VALUES[i];
     }
     else if (key_is(it, "contra.glide")) *out = s_glide;
+    else if (key_is(it, "contra.shots")) *out = s_shots;
     else if (key_is(it, "contra.thread")) *out = s_thread;
     else if (key_is(it, "contra.shake")) *out = s_shake;
     else if (key_is(it, "contra.order")) *out = s_order;
@@ -1087,6 +1185,7 @@ static int menu_set(void *ctx, const RecompRuntimeUiItem *it, int v)
         s_prepared = -1;
     }
     else if (key_is(it, "contra.glide")) s_glide = s_glide_saved = v != 0;
+    else if (key_is(it, "contra.shots")) s_shots = s_shots_saved = v != 0;
     else if (key_is(it, "contra.thread")) s_thread = s_thread_saved = v != 0;
     else if (key_is(it, "contra.shake")) { s_shake = s_shake_saved = v != 0; s_prepared = -1; }
     else if (key_is(it, "contra.order")) { s_order = s_order_saved = clampi(v, 0, 1); s_prepared = -1; }
@@ -1103,6 +1202,7 @@ static int menu_enabled(void *ctx, const RecompRuntimeUiItem *it)
     (void)ctx;
     if (key_is(it, "contra.order")) return s_unlimit;
     if (key_is(it, "contra.glide") || key_is(it, "contra.thread")) return s_present_rate > 60;
+    if (key_is(it, "contra.shots")) return s_present_rate > 60 && s_glide;
     return 1;
 }
 

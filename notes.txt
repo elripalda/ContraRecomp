@@ -40,3 +40,75 @@ Phase 5 measurements (Stage 1 only, from the route's scroll.log/oam.log)
 - Sprites: up to 51 on screen, busiest line up to 20 (> 8 on 367 of 7500 frames
   = flicker). OAM order changes every frame (the game shuffles slots).
   Hidden sprites sit at Y = $F4.
+
+Phase 3b (2026-11-15): harvest from real play
+- Full 2-player play-through to the ending (143,270 frames, 240 recorded pieces).
+  replay_diagnostic.py harvested it; after the rebuild all 240 pieces replay with
+  "interpreted: ROM 0". seeds.txt = 11956 lines. (The % on the mode= line is low on
+  pieces because the cycle count includes the frames before the save state: ignore it.)
+
+Phase 5 measurements, whole game (build-play/diagnostics/measure, /tmp scripts)
+Pieces by stage (this recording): 12-46 Jungle, 47-59 Base 1, 60-74 Waterfall,
+75-102 Base 2, 103-154 Snow Field, 155-183 Energy Zone, 184-218 Hangar,
+219-229 Alien's Lair, 230-240 ending, then the second loop starts (Stage 1).
+- Emulation (pacing.log, 60 Hz, one core): emu median 8.56 ms, p90 8.98, p99 9.61,
+  max 14.7. Work per frame 13.2 ms median. No late frames at 60.
+  -> 120/180/240 need the second core (a 180 Hz picture is 5.5 ms).
+- Horizontal stages (1, 5, 6, 7, 8): camera X moves 1 px a frame while pushed
+  (steady). Exceptions: Snow Field 88 frames of 1,2,1,2 (camera catching up);
+  Hangar 17 frames of 1,2,2,2. Single 1-frame stops inside a run: 17-58 per stage
+  (rare; maybe slowdown). Wraps at 512. No scroll split anywhere in play
+  (1 band; 2-3 bands only on a few transition frames).
+- Waterfall (Stage 3): camera Y scrolls UP, following the player after a jump, with
+  the game's own slowing steps 3,3,2,2,2,1,1,1,0,1,0 (steps 1-4 px). Y wraps at 240
+  (0..239). Needs eased camera Y (NG2's extras don't glide Y yet: "Vertical scrolling
+  is not glided yet"), and character glide must use world Y = screen Y + camera Y
+  there. Trailing the camera shows rows the game is rewriting at the bottom edge:
+  keep the trail <= 8 px, under the bottom crop.
+- Base stages (2, 4): no scrolling at all. Rooms change through a ~75-frame black
+  screen (background palettes set to $0F), so nothing glides across a room change.
+  CHR RAM is rewritten every ~4 frames there (animated tiles; the snapshot copies CHR).
+- Sprites: up to 64 on screen, busiest line up to 24 (> 8 = flicker, heavy in
+  bosses and 2P). 8x16 sprites (the extras handle them). OAM order changes every
+  frame. Hidden sprites at Y = $F4.
+- Flashes: NO whole-screen white flashes in the whole game. Every big palette change
+  is a fade to black (stage start, room change, game over).
+  Ambient colour cycles (1-3 background colours, 8 frames on / 8 off):
+    * almost every stage: $06 <-> $26 (dark red / pink lights) - gentle, leave alone
+    * Hangar end (pieces 216-219): $17 <-> $20 (brown <-> WHITE) - the brightest one
+    * Alien's Lair (227-229): $26 <-> $35 (the heart pulsing)
+  None needs softening unless the Hangar white blink bothers you.
+
+Phase 7 pacing, first test (2026-11-15, pacing180.log: 180 then 240, second core on)
+- User: mostly good; hitching at the start and middle of Stage 1, and a big drop
+  (240 -> ~120) just before the Stage 1 boss.
+- Log: on most frames the NES frame takes 9.5-10 ms on the second core (8.6 on one
+  core at 60), but in bursts it takes ~22 ms every 3rd frame (437 frames > 18 ms;
+  NG2 had 46). Each one is followed by 2 catch-up frames with NO in-between pictures:
+  frames 4560-4800 (before the boss) averaged 2.0 pictures a frame = 120 fps.
+- One core at 60 (pacing.log, whole game) never went above ~12.9 ms, so the game
+  itself isn't that heavy there: the second core is being slowed down while the main
+  thread draws pictures at the same time. Suspects: both threads on the same physical
+  core (SMT) / different CCX, or CPU clocks dropping. Test: taskset, performance mode.
+- Test A (pacing-taskset.log, 240, taskset -c 0-3 = 4 real cores on one CCX):
+  FIXED. 3.98 of 4 pictures a frame (was 3.55), worst 300-frame stretch 3.88 (was
+  2.65), frames > 18 ms 19 (was 437), emu p99 13.7 ms (was 23).
+  -> cause = where Linux puts the two threads (SMT twin / other CCX), not the game.
+  Test B skipped: power-profiles-daemon has no 'performance' profile on this PC.
+
+Pacing fixed (2026-11-15): engine nesrecomp 826fbbf pins the threads (cyc_affinity.c):
+  pacing-pin.log 3.99 of 4 pictures a frame at 240, 1 frame > 18 ms. No taskset needed.
+
+Shots (2026-11-15): the "blurry laser/shots" = the game draws every player shot only
+every OTHER frame (tile 0e palette 2, the rifle shot: on alternate frames 10,356 times
+in Stage 1, never two frames in a row; tile 10 palette 2 too). At 240 a shot showed for
+4 pictures, vanished for 4, came back 6 px on = a smeared pair. Speed is only 3 px a frame.
+(First guess "12 px a frame" was wrong: that was the HUD medals, 12 px apart.)
+Fix: SteadyShots (menu "Steady shots", default on): a small sprite that has been found
+again after a missing frame is a blinker; when it's missing it's drawn at its last
+position plus its own motion, gliding. Ghosts of small sprites are kept even before they
+have a motion, and a match with such a ghost spreads the step over the missing frames.
+Checked on the whole recorded game (tools/glide_harness.c): 92% of the shots' missing
+frames filled; of the filled-in shots 93% are exactly where the game puts the shot next
+frame, 1% off by > 2 px, 6% were gone next frame (hit something / left the screen: drawn
+1/60 s longer). Only player shots are affected (enemy bullets don't blink).

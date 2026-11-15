@@ -68,3 +68,45 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     cd ~/Projects/ContraRecomp
     python -I tools/segment_logs.py --jobs 6
 #   Then tell Claude it's done (Claude reads build-play/diagnostics).
+
+# 12) First smooth-motion test (no code change: NG2's features as they are)
+#   In the menu (Escape): Pictures per second 180, Second core On, Character glide On,
+#   No sprite flicker On. Play Stage 1 and, with a continue/2nd loop, any horizontal
+#   stage. The Waterfall is EXPECTED to look wrong (vertical easing isn't built yet).
+    cd ~/Projects/ContraRecomp
+    env CYC_PACING_LOG=pacing180.log ./build-play/contrarecomp contra.nes
+#   Then tell Claude how it felt (and phone video if something looks off).
+
+# 13) Pacing tests for the hitching (same stretch each time: Stage 1 start -> boss)
+#   First make a save state at the start of Stage 1 (F7, slot 01) so every test
+#   plays the same part. Settings: 240, Second core On. Close the game between tests.
+#   Test A: one CCX (4 real cores, no SMT twins)
+    cd ~/Projects/ContraRecomp
+    env CYC_PACING_LOG=pacing-taskset.log taskset -c 0-3 mangohud ./build-play/contrarecomp contra.nes
+#   Test B: same + CPU in performance mode for the run
+    cd ~/Projects/ContraRecomp
+    powerprofilesctl launch -p performance env CYC_PACING_LOG=pacing-perf.log taskset -c 0-3 mangohud ./build-play/contrarecomp contra.nes
+#   Then tell Claude which felt better.
+
+# 14) Engine fix: the game pins its own threads (new runner/cyc/cyc_affinity.c)
+#   a) save it in the engine and push
+    cd ~/Projects/nesrecomp
+    git add runner/cyc/cyc_affinity.c runner/cyc/cyc_affinity.h runner/cyc/cyc_sdl.c runner/cyc/cyc.cmake
+    git commit -m "Window: pin the emulation thread to its own core, main thread to the rest of its L3 (Linux)"
+    git push
+#   b) Contra uses the new engine
+    cd ~/Projects/ContraRecomp/nesrecomp
+    git fetch; git checkout origin/dd2-240hz
+    cd ~/Projects/ContraRecomp
+    cmake --build build-play --parallel
+#   c) test WITHOUT taskset. The terminal should print a "[cyc threads]" line.
+    cd ~/Projects/ContraRecomp
+    env CYC_PACING_LOG=pacing-pin.log mangohud ./build-play/contrarecomp contra.nes
+
+# 15) Steady shots (the blurry laser/shots): rebuild and play, 240
+#   Menu: Smooth motion -> "Steady shots" (On by default). Compare On/Off on the shots.
+    cd ~/Projects/ContraRecomp
+    cmake --build build-play --parallel
+    env CYC_PACING_LOG=pacing-shots.log mangohud ./build-play/contrarecomp contra.nes
+#   If it's good, save it:
+    git add -A; git commit -m "Contra: steady shots (shots the game blinks are drawn every frame and glide)"
