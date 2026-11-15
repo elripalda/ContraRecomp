@@ -558,7 +558,8 @@ static void glide_frame(bool on, int dx)
                     parent[gl_find(parent, i)] = gl_find(parent, j);
         for (int r = 0; r < nv; ++r) {
             if (gl_find(parent, r) != r) continue;
-            int m = 0, top = -1, topn = 0;
+            int m = 0, top = -1, topn = 0, pieces = 0;
+            for (int i = 0; i < nv; ++i) pieces += gl_find(parent, i) == r;
             for (int i = 0; i < nv; ++i) {
                 if (gl_find(parent, i) != r || !has[i]) continue;
                 ++m;
@@ -569,7 +570,13 @@ static void glide_frame(bool on, int dx)
             }
             BandMotion bm = { 0 }, bmy = { 0 };
             double sx, sy;
-            if (m && topn * 100 >= m * GL_AGREE) {
+            /* Trust the matched pieces only when they are most of the
+             * character. Contra: Bill's running poses change his body's
+             * tiles but keep the legs' tile while it shifts 6 px back under
+             * him; that one piece alone said "Bill stepped 5 px back" and
+             * he lurched on every running cycle. Fewer found: follow by
+             * position (below), keeping the character's own speed. */
+            if (m && topn * 100 >= m * GL_AGREE && m * 2 > pieces) {
                 /* the character's motion state: from the agreeing pieces' last frame */
                 for (int i = 0; i < nv && !bm.valid; ++i)
                     if (gl_find(parent, i) == r && has[i] && mx[i] == mx[top] && my[i] == my[top] && s_gl_prev_m[from[i]].valid) {

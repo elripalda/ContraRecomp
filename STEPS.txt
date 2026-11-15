@@ -110,3 +110,10 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     env CYC_PACING_LOG=pacing-shots.log mangohud ./build-play/contrarecomp contra.nes
 #   If it's good, save it:
     git add -A; git commit -m "Contra: steady shots (shots the game blinks are drawn every frame and glide)"
+
+# 16) Legs fix (majority rule): rebuild and run; watch Bill/Lance running
+    cd ~/Projects/ContraRecomp
+    cmake --build build-play --parallel
+    env CYC_PACING_LOG=pacing-legs.log mangohud ./build-play/contrarecomp contra.nes
+#   If it's good, save it:
+    git add -A; git commit -m "Contra: character glide trusts matched pieces only if they are most of the character (leg lurch)"
