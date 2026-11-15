@@ -1,0 +1,4 @@
+[game]
+output_prefix = "contra"
+name = "Contra"
+cycle_accurate = true

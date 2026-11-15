@@ -1,0 +1,24 @@
+CONTRA - NEXT STEPS (run in fish, one block at a time)
+=====================================================
+
+1) Git and the pinned engine + menu (only once)
+    cd ~/Projects/ContraRecomp
+    git init; git branch -m main
+    git submodule add -b dd2-240hz https://github.com/gabbycat4/nesrecomp.git nesrecomp
+    git submodule add https://github.com/mstan/recomp-ui.git recomp-ui
+    cd nesrecomp; git checkout 1f57896; cd ../recomp-ui; git checkout c099b88; cd ..
+    git submodule update --init --recursive
+    git add -A; git commit -m "Contra: project from the NG2 template, pinned engine and menu"
+
+2) Headless build (the first build takes a while: it recompiles the game)
+    cd ~/Projects/ContraRecomp
+    cmake -S . -B build-headless -G Ninja -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_HEADLESS=ON
+    cmake --build build-headless --parallel
+
+3) First boot + probe: screenshots every 100 frames, so Claude can see when the
+   title is ready for the Konami code and where Stage 1 starts
+    cd ~/Projects/ContraRecomp
+    ./build-headless/contrarecomp contra.nes --frames 600 --screenshot boot.png
+    ./build-headless/contrarecomp contra.nes --frames 3000 --input route.txt --shot-every 100 --screenshot shots/probe.png
+   Then tell Claude it's done (Claude reads the shots from the folder).
+   If step 2 or 3 errors, paste the error to Claude.

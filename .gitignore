@@ -1,0 +1,15 @@
+build/
+build-*/
+shots/
+frames/
+generated/
+*.nes
+*.png
+*.log
+capture.txt
+contra_cyc*.c
+contra_cyc_views.txt
+_to_delete/
+__pycache__/
+__pycache__/
+!packaging/**/*.png

@@ -1,0 +1,26 @@
+CONTRA (USA) RECOMP - NOTES
+===========================
+
+Phase 1 (2026-11-15)
+- ROM: contra.nes (was Contra.nes; renamed to match the playbook)
+  131088 bytes = 16 header + 128 KB PRG, no CHR ROM
+- Header: 4E 45 53 1A 08 00 21 00 ...
+  8 x 16 KB PRG, 0 CHR (CHR RAM), flags6 $21 -> mapper 2 (UxROM), vertical mirroring
+  Same board as Blades of Steel (engine supports it).
+- SHA-1 (whole file):        c9ea66bb7cb30ad5343f1721b1d4d3219859319b
+- SHA-1 (without header):    979494e7869ac7ab4815fdbd1dc99f893f713fbf
+  TODO: compare with No-Intro "Contra (USA)" (No-Intro lists the headerless one),
+  and use this same file in Mesen.
+
+Phase 2 (2026-11-15, prepared by Claude)
+- From NinjaGaiden2Recomp: CMakeLists.txt (PLAYERS 2, contrarecomp), .gitignore,
+  src/contra_extras.c (= ng2_extras.c renamed; gcc syntax check OK),
+  tools/segment_logs.py. game.toml name = "Contra". Empty seeds.txt.
+- route.txt is only a probe (START at 300) until the screenshots show the title timing.
+
+Engine notes
+- Extra CPU time (no slowdown): cyc_set_extra_scanlines exists but only MMC1/MMC3
+  are allowed (runner/cyc/hw_machine.c cyc_extra_scanlines_supported). See ROADMAP 5b.
+
+Phase 5 measurements
+- (to fill in)
