@@ -1199,8 +1199,8 @@ static const Crop CROP_PRESETS[] = { { 0, 0, 0, 0 }, { 8, 8, 8, 8 }, { 12, 12, 1
 
 static const RecompRuntimeUiItem s_menu[] = {
     { "contra.rate", "Smooth motion", "Pictures per second",
-      "Extra pictures between the NES's 60 frames: the scenery (each layer of the train on its own) and "
-      "the characters glide a fraction of a pixel in each. 180 suits a 240 Hz FreeSync monitor.",
+      "Extra pictures between the NES's 60 frames: the scenery (sideways and up the Waterfall) and "
+      "the characters glide a fraction of a pixel in each. 240 or 180 suit a 240 Hz FreeSync/G-Sync monitor.",
       RECOMP_RUNTIME_UI_CHOICE, 0, 3, 1, RATE_CHOICES, 4, RATE_VALUES },
     { "contra.glide", "Smooth motion", "Character glide",
       "With 120/180/240 pictures per second, Bill, Lance and the enemies glide between the game's positions "
@@ -1217,11 +1217,11 @@ static const RecompRuntimeUiItem s_menu[] = {
       RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
     { "contra.shake", "Picture", "Screen shake",
       "Some bosses shake the whole screen when they land or are hit. Off: the scenery holds still "
-      "(Ryu and the enemies are never shaken by the game). On: as the game.",
+      "(the characters are never shaken by the game). On: as the game.",
       RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
     { "contra.unlimit", "Picture", "No sprite flicker",
-      "Draws every sprite every frame instead of the NES's 8 per line, so enemies, Ryu and his "
-      "shadow clones stop flickering.",
+      "Draws every sprite every frame instead of the NES's 8 per line, so Bill, Lance, the enemies "
+      "and the bosses stop flickering.",
       RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
     { "contra.order", "Picture", "Overlapping sprites",
       "Which sprite is in front where two overlap (with No sprite flicker on).",

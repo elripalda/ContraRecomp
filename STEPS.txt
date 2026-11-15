@@ -132,3 +132,40 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     env CYC_PACING_LOG=pacing-arms.log mangohud ./build-play/contrarecomp contra.nes
 #   If it's good, save it:
     git add -A; git commit -m "Contra: flexing chains glide piece by piece (Waterfall boss arms)"
+
+# ================= RELEASE (playbook phases 8 and 9) =================
+# 19) Rebuild (menu texts updated), then the fresh-settings test: rename your
+#   config, start the game, check the menus look right and the defaults are
+#   sensible (60 pictures a second, smooth motion features on), quit, put yours back.
+    cd ~/Projects/ContraRecomp
+    cmake --build build-play --parallel
+    mv build-play/config.ini build-play/config.mine.ini
+    ./build-play/contrarecomp contra.nes
+    mv build-play/config.mine.ini build-play/config.ini
+
+# 20) Save everything and publish the repository on GitHub (public)
+    cd ~/Projects/ContraRecomp
+    git add -A; git commit -m "Contra: README, licence, release builds"
+    gh repo create ContraRecomp --public --source=. --remote=origin --push --description "Native PC port of Contra (NES) with 240 Hz smooth motion. Bring your own ROM."
+
+# 21) Store the ROM as secrets so GitHub can build the downloads (never in a download)
+    cd ~/Projects/ContraRecomp
+    bash tools/release/upload-rom-secret.sh contra.nes gabbycat4/ContraRecomp
+
+# 22) Test build on GitHub: open the repo page -> Actions -> "Release builds" ->
+#   "Run workflow". After ~15 min both files appear at the bottom of the run's page.
+#   Tell Claude if a job goes red (copy the error from the red step).
+
+# 23) Publish v1.0.0 (builds again and creates the Releases page with both files)
+    cd ~/Projects/ContraRecomp
+    git tag v1.0.0; git push origin v1.0.0
+
+# 24) Stranger test: build it the way the README says, from GitHub, fresh
+    cd ~
+    mkdir -p ~/Test; cd ~/Test
+    git clone --recursive https://github.com/gabbycat4/ContraRecomp.git
+    cd ContraRecomp
+    cp ~/Projects/ContraRecomp/contra.nes .
+    cmake -S . -B build-play -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-play --parallel
+    ./build-play/contrarecomp contra.nes

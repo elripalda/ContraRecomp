@@ -1,0 +1,29 @@
+## Download and play
+
+You need your own dump of **Contra (USA)**. These downloads contain no game
+data; the game asks for your ROM the first time it starts and checks that it
+is the right one.
+
+### Windows
+1. Download **ContraRecomp-Windows-x64.zip** and extract it anywhere
+   (right-click, *Extract All*). Don't run it from inside the zip.
+2. Double-click **contrarecomp.exe**. If Windows SmartScreen warns about an
+   unknown publisher, click *More info*, then *Run anyway*.
+3. Pick your ROM when asked. Settings and saves are kept in the same folder.
+
+### Linux
+1. Download **ContraRecomp-x86_64.AppImage**.
+2. Make it executable: right-click, *Properties*, *Permissions*, tick
+   *Allow executing as program* (or `chmod +x ContraRecomp-x86_64.AppImage`).
+3. Double-click it and pick your ROM when asked. Settings and saves are kept
+   in `~/.local/share/ContraRecomp`.
+
+If the AppImage won't start on an older distribution, install FUSE 2
+(`sudo apt install libfuse2` on Ubuntu/Debian), or run it with
+`--appimage-extract-and-run`.
+
+### Controls
+Escape (or the right shoulder button) opens the menu. F11 fullscreen,
+F7 save states, F8 rewind, Tab fast forward. Two players: two controllers.
+The README has the recommended settings for high-refresh monitors
+(240 or 180 pictures a second with FreeSync/G-Sync).

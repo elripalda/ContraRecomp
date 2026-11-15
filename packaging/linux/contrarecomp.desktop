@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Contra Recompiled
+Comment=Native PC port of Contra (NES) with 240 Hz smooth motion; needs your own ROM
+Exec=contrarecomp
+Icon=contrarecomp
+Categories=Game;ActionGame;
+Terminal=false
