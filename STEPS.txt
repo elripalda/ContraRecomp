@@ -53,3 +53,18 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     cmake --build build-play --parallel
     env CYC_PACING_LOG=pacing.log ./build-play/contrarecomp contra.nes
 #   Then tell Claude it's done (Claude reads build-play/diagnostics and pacing.log).
+
+# 9) Harvest the play-through: replays all 240 recorded pieces headless (takes a while)
+    cd ~/Projects/ContraRecomp
+    python -I ~/Projects/nesrecomp/tools/cyc/replay_diagnostic.py build-play/diagnostics --exe build-play/contrarecomp --rom contra.nes --keep-going --host-arg=--miss-log --host-arg=$HOME/Projects/ContraRecomp/seeds.txt
+
+# 10) Rebuild both builds with the new code, save in git
+    cd ~/Projects/ContraRecomp
+    cmake --build build-headless --parallel
+    cmake --build build-play --parallel
+    git add -A; git commit -m "Contra: harvested a full 2-player play-through"
+
+# 11) Measure the whole game: every piece again, with scroll/PPU/sprite logs + screenshots
+    cd ~/Projects/ContraRecomp
+    python -I tools/segment_logs.py --jobs 6
+#   Then tell Claude it's done (Claude reads build-play/diagnostics).
