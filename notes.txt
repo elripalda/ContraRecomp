@@ -22,5 +22,21 @@ Engine notes
 - Extra CPU time (no slowdown): cyc_set_extra_scanlines exists but only MMC1/MMC3
   are allowed (runner/cyc/hw_machine.c cyc_extra_scanlines_supported). See ROADMAP 5b.
 
-Phase 5 measurements
-- (to fill in)
+Phase 3 (2026-11-15): harvesting
+- Konami code at the title works (30 lives; the HUD shows max 5 medals).
+  Title settled by frame 300, gameplay from ~900.
+- route_play.txt and route_2p.txt (tools/make_routes.py): both 100.0% native after
+  one harvest + rebuild. seeds.txt = 6003 lines.
+- Random play only covers Stage 1: it reaches the boss wall (camera X locked at the
+  end, ~3320 px of scrolling) but can't destroy it, then uses up the 30 lives:
+  GAME OVER at ~11850 (1P). Later stages must come from real play (diagnostics replay).
+- CPU RAM code: none (capture RAM 0).
+
+Phase 5 measurements (Stage 1 only, from the route's scroll.log/oam.log)
+- Camera: horizontal, moves only while the player pushes right past the middle,
+  and then EXACTLY 1 px every frame (60 Hz, steady 1,1,1,1: no 1,2,1,2 rhythm like
+  NG2). Steps seen: only 0 and 1. Wraps at 512. Locks at the boss wall.
+- No scroll split in Stage 1 (1 band; the HUD medals are sprites, like BOS).
+- Sprites: up to 51 on screen, busiest line up to 20 (> 8 on 367 of 7500 frames
+  = flicker). OAM order changes every frame (the game shuffles slots).
+  Hidden sprites sit at Y = $F4.

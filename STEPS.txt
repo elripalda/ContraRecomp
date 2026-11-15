@@ -1,7 +1,7 @@
 CONTRA - NEXT STEPS (run in fish, one block at a time)
 =====================================================
 
-1) Git and the pinned engine + menu (only once)
+# 1) Git and the pinned engine + menu (only once)
     cd ~/Projects/ContraRecomp
     git init; git branch -m main
     git submodule add -b dd2-240hz https://github.com/gabbycat4/nesrecomp.git nesrecomp
@@ -10,15 +10,46 @@ CONTRA - NEXT STEPS (run in fish, one block at a time)
     git submodule update --init --recursive
     git add -A; git commit -m "Contra: project from the NG2 template, pinned engine and menu"
 
-2) Headless build (the first build takes a while: it recompiles the game)
+# 2) Headless build (the first build takes a while: it recompiles the game)
     cd ~/Projects/ContraRecomp
     cmake -S . -B build-headless -G Ninja -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_HEADLESS=ON
     cmake --build build-headless --parallel
 
-3) First boot + probe: screenshots every 100 frames, so Claude can see when the
-   title is ready for the Konami code and where Stage 1 starts
+# 3) First boot + probe: screenshots every 100 frames, so Claude can see when the
+#   title is ready for the Konami code and where Stage 1 starts
     cd ~/Projects/ContraRecomp
     ./build-headless/contrarecomp contra.nes --frames 600 --screenshot boot.png
     ./build-headless/contrarecomp contra.nes --frames 3000 --input route.txt --shot-every 100 --screenshot shots/probe.png
-   Then tell Claude it's done (Claude reads the shots from the folder).
-   If step 2 or 3 errors, paste the error to Claude.
+#   Then tell Claude it's done (Claude reads the shots from the folder).
+#   If step 2 or 3 errors, paste the error to Claude.
+
+# 4) Harvest run, 1 player (Konami code = 30 lives, then ~5 minutes of random play).
+#   Records the logs Claude needs and screenshots every 500 frames.
+    cd ~/Projects/ContraRecomp
+    ./build-headless/contrarecomp contra.nes --frames 18500 --input route_play.txt --shot-every 500 --screenshot shots/run1p.png --miss-log seeds.txt --capture-log capture.txt --scroll-log scroll.log --oam-log oam.log
+
+# 5) Same for 2 players (both controllers random)
+    cd ~/Projects/ContraRecomp
+    ./build-headless/contrarecomp contra.nes --frames 18500 --input route_2p.txt --shot-every 500 --screenshot shots/run2p.png --miss-log seeds.txt --capture-log capture.txt
+
+# 6) Rebuild with the harvested code, then check the native %
+    cd ~/Projects/ContraRecomp
+    cmake --build build-headless --parallel
+    ./build-headless/contrarecomp contra.nes --frames 18500 --input route_play.txt
+    ./build-headless/contrarecomp contra.nes --frames 18500 --input route_2p.txt
+#   Then tell Claude it's done.
+#   (tools/make_routes.py rewrites both routes if Claude changes them.)
+
+# 7) Save this step in git
+    cd ~/Projects/ContraRecomp
+    git add -A; git commit -m "Contra: Konami-code routes, 100% native on both routes"
+
+# 8) Window build, then PLAY THROUGH (this is the harvest for Stages 2-8 + measurements)
+#   Enter the Konami code at the title (Up Up Down Down Left Right Left Right B A Start).
+#   Play as far as you can (ending if possible). Game over -> CONTINUE.
+#   Settings: leave the defaults (60 pictures a second) for this run.
+    cd ~/Projects/ContraRecomp
+    cmake -S . -B build-play -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-play --parallel
+    env CYC_PACING_LOG=pacing.log ./build-play/contrarecomp contra.nes
+#   Then tell Claude it's done (Claude reads build-play/diagnostics and pacing.log).
